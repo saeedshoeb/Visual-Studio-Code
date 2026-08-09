@@ -74,7 +74,7 @@ import { IView, LayoutPriority, Sizing, SplitView } from '../../../../base/brows
 import { Color } from '../../../../base/common/color.js';
 import { PANEL_SECTION_BORDER } from '../../../../workbench/common/theme.js';
 import { EditorResourceAccessor, SideBySideEditor } from '../../../../workbench/common/editor.js';
-import { logChangesViewFileSelect, logChangesViewVersionModeChange, logChangesViewViewModeChange } from '../../../common/sessionsTelemetry.js';
+import { logChangesViewFileSelect, logChangesViewVersionModeChange, logChangesViewViewModeChange, normalizeChangesetTelemetryKind } from '../../../common/sessionsTelemetry.js';
 import { ChecksViewModel } from './checksViewModel.js';
 import { REVEAL_CI_CHECKS_COMMAND_ID } from './checksActions.js';
 // eslint-disable-next-line local/code-import-patterns -- TODO: move skill button constants out of providers
@@ -923,7 +923,12 @@ export class ChangesViewPane extends ViewPane {
 					return;
 				}
 
-				logChangesViewFileSelect(this.telemetryService, e.element.changeType);
+				logChangesViewFileSelect(
+					this.telemetryService,
+					e.element.changeType,
+					normalizeChangesetTelemetryKind(this.changesViewService.activeSessionChangesetObs.get()?.id),
+					this.changesViewService.activeSessionWorkspaceTopologyObs.get(),
+				);
 
 				if (this.shouldOpenModalDiff()) {
 					const items = changesObs.get();
@@ -1860,7 +1865,7 @@ export class ChangesPickerActionItem extends ActionWidgetDropdownActionViewItem 
 					enabled: changeset.isEnabled.get(),
 					run: async () => {
 						changesViewService.setChangesetId(changeset.id);
-						logChangesViewVersionModeChange(this.telemetryService, changeset.id);
+						logChangesViewVersionModeChange(this.telemetryService, changeset.id, changesViewService.activeSessionWorkspaceTopologyObs.get());
 					}
 				} satisfies IActionWidgetDropdownAction));
 			},

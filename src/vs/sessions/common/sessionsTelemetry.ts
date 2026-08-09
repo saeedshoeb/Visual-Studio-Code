@@ -54,30 +54,52 @@ export function logSidePanelToggle(telemetryService: ITelemetryService, visible:
 
 type ChangesViewVersionModeChangeEvent = {
 	mode: string;
+	changesetKind: string;
+	isMultiRoot: boolean;
+	workspaceFolderCount: number;
 };
 
 type ChangesViewVersionModeChangeClassification = {
 	owner: 'osortega';
 	comment: 'Tracks when the user switches the version mode in the Changes panel (Branch Changes, All Changes, Last Turn).';
 	mode: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; comment: 'The version mode selected by the user.' };
+	changesetKind: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; comment: 'The normalized changeset kind selected (branch, session, uncommitted, turn, compareTurns, or other).' };
+	isMultiRoot: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Whether the session spans more than one workspace folder.' };
+	workspaceFolderCount: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'The number of workspace folders in the session (browser-projected metadata).' };
 };
 
-export function logChangesViewVersionModeChange(telemetryService: ITelemetryService, mode: string): void {
-	telemetryService.publicLog2<ChangesViewVersionModeChangeEvent, ChangesViewVersionModeChangeClassification>('vscodeAgents.changesView/versionModeChange', { mode });
+export function logChangesViewVersionModeChange(telemetryService: ITelemetryService, mode: string, topology: ISessionWorkspaceTopology): void {
+	telemetryService.publicLog2<ChangesViewVersionModeChangeEvent, ChangesViewVersionModeChangeClassification>('vscodeAgents.changesView/versionModeChange', {
+		mode,
+		changesetKind: normalizeChangesetTelemetryKind(mode),
+		isMultiRoot: topology.isMultiRoot,
+		workspaceFolderCount: topology.workspaceFolderCount,
+	});
 }
 
 type ChangesViewFileSelectEvent = {
 	changeType: string;
+	changesetKind: string;
+	isMultiRoot: boolean;
+	workspaceFolderCount: number;
 };
 
 type ChangesViewFileSelectClassification = {
 	owner: 'osortega';
 	comment: 'Tracks when the user selects a changed file in the Changes panel.';
 	changeType: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; comment: 'The type of change (added, modified, deleted).' };
+	changesetKind: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; comment: 'The normalized changeset kind whose file was selected (branch, session, uncommitted, turn, compareTurns, or other).' };
+	isMultiRoot: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Whether the session spans more than one workspace folder.' };
+	workspaceFolderCount: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'The number of workspace folders in the session (browser-projected metadata).' };
 };
 
-export function logChangesViewFileSelect(telemetryService: ITelemetryService, changeType: string): void {
-	telemetryService.publicLog2<ChangesViewFileSelectEvent, ChangesViewFileSelectClassification>('vscodeAgents.changesView/fileSelect', { changeType });
+export function logChangesViewFileSelect(telemetryService: ITelemetryService, changeType: string, changesetKind: string, topology: ISessionWorkspaceTopology): void {
+	telemetryService.publicLog2<ChangesViewFileSelectEvent, ChangesViewFileSelectClassification>('vscodeAgents.changesView/fileSelect', {
+		changeType,
+		changesetKind,
+		isMultiRoot: topology.isMultiRoot,
+		workspaceFolderCount: topology.workspaceFolderCount,
+	});
 }
 
 type ChangesViewViewModeChangeEvent = {
@@ -92,6 +114,56 @@ type ChangesViewViewModeChangeClassification = {
 
 export function logChangesViewViewModeChange(telemetryService: ITelemetryService, mode: string): void {
 	telemetryService.publicLog2<ChangesViewViewModeChangeEvent, ChangesViewViewModeChangeClassification>('vscodeAgents.changesView/viewModeChange', { mode });
+}
+
+// --- Shared multi-root topology helpers ---
+
+/**
+ * The browser-projected git/non-git shape of a session's workspace folders,
+ * used for telemetry. These counts come from workspace *metadata*
+ * (`folder.gitRepository`), distinct from the agent host's Node-side git probe;
+ * `workspaceFolderCount === gitFolderCount + nonGitFolderCount`.
+ */
+export interface ISessionWorkspaceTopology {
+	readonly workspaceFolderCount: number;
+	readonly gitFolderCount: number;
+	readonly nonGitFolderCount: number;
+	readonly isMultiRoot: boolean;
+}
+
+/**
+ * Derives the reconcilable {@link ISessionWorkspaceTopology} from a session's
+ * total and git-backed folder counts (`isMultiRoot` uses the folder-count
+ * convention shared across sessions telemetry).
+ */
+export function classifySessionWorkspaceTopology(totalFolderCount: number, gitFolderCount: number): ISessionWorkspaceTopology {
+	return {
+		workspaceFolderCount: totalFolderCount,
+		gitFolderCount,
+		nonGitFolderCount: totalFolderCount - gitFolderCount,
+		isMultiRoot: totalFolderCount > 1,
+	};
+}
+
+/**
+ * Normalizes a changeset catalogue id (`branch`, `session`, `uncommitted`,
+ * `turn/<id>`, `compare/<a>/<b>`) into a stable, low-cardinality kind for
+ * telemetry, or `other` when it does not match a known shape.
+ */
+export function normalizeChangesetTelemetryKind(changesetId: string | undefined): string {
+	if (!changesetId) {
+		return 'none';
+	}
+	if (changesetId === 'branch' || changesetId === 'session' || changesetId === 'uncommitted') {
+		return changesetId;
+	}
+	if (changesetId.startsWith('turn/')) {
+		return 'turn';
+	}
+	if (changesetId.startsWith('compare/')) {
+		return 'compareTurns';
+	}
+	return 'other';
 }
 
 // --- Tunnel agent host discovery ---
