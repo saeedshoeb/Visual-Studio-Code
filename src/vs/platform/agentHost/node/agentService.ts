@@ -44,6 +44,9 @@ import { AgentHostTerminalManager, IAgentHostTerminalManager } from './agentHost
 import { ISessionDbUriFields, parseSessionDbUri } from '../common/sessionDbUri.js';
 import { IGitBlobUriFields, parseGitBlobUri } from './gitDiffContent.js';
 import { resolveSessionRepositories } from './agentHostSessionRepositories.js';
+import { resolveSessionTopology } from './agentHostSessionTopology.js';
+import { reportAgentHostSessionCreated, reportAgentHostSessionMaterialized, type AgentHostSessionSource } from './agentHostSessionTelemetry.js';
+import { StopWatch } from '../../../base/common/stopwatch.js';
 import { findDeepestContainingWorkingDirectory, isMultiRootSession } from '../common/agentHostWorkingDirectories.js';
 import { AgentHostStateManager, IAgentHostStateManager } from './agentHostStateManager.js';
 import { IAgentHostGitService, tryResolvePrimaryWorktreeRoot } from '../common/agentHostGitService.js';
@@ -185,6 +188,20 @@ interface IPersistedPeerChat {
 }
 
 /**
+ * Per-session tracking for the two-seam session telemetry (created +
+ * materialized). See {@link AgentService._sessionTelemetryTracking}.
+ */
+interface ISessionTelemetryTracking {
+	readonly provider: string;
+	readonly source: AgentHostSessionSource;
+	readonly wasProvisional: boolean;
+	/** True once `agentHost.sessionMaterialized` has been scheduled, so it fires at most once. */
+	materializationScheduled: boolean;
+	/** Set when the session is disposed, so an in-flight materialize emit bails. */
+	cancelled: boolean;
+}
+
+/**
  * Reconcile a session's working-directory set from a create-result /
  * materialization receipt. The resolved receipt is authoritative for the roots
  * it reports (index 0 = the resolved process root, e.g. a worktree); any
@@ -260,6 +277,20 @@ export class AgentService extends Disposable implements IAgentService {
 	 * rather than one stream per session.
 	 */
 	private readonly _downloadProgressInterest = new Map<AgentProvider, Set<string>>();
+	/**
+	 * Per-session telemetry tracking for the `agentHost.sessionCreated` /
+	 * `agentHost.sessionMaterialized` two-seam events, keyed by session URI.
+	 *
+	 * Only sessions created in THIS process via {@link _createSession} get an
+	 * entry, so a resumed / restored session (no entry) never re-emits either
+	 * event. Deleted on {@link disposeSession}; an idle eviction
+	 * ({@link _maybeEvictIdleSession}) intentionally KEEPS the entry so a
+	 * created-provisional session that is evicted before it materializes still
+	 * emits `sessionMaterialized` exactly once if it later materializes. Entries
+	 * are tiny and bounded by the number of unique session URIs created this
+	 * process.
+	 */
+	private readonly _sessionTelemetryTracking = new Map<string, ISessionTelemetryTracking>();
 	/** Subscriptions to provider progress events; cleared when providers change. */
 	private readonly _providerSubscriptions = this._register(new DisposableStore());
 	/**
@@ -834,7 +865,7 @@ export class AgentService extends Disposable implements IAgentService {
 	private _createSessionServerToolAccessor(): ISessionServerToolAccessor {
 		return {
 			listSessions: () => this.listSessions(),
-			createSession: config => this.createSession(config),
+			createSession: config => this._createSession(config, 'agentTool'),
 			getModels: () => {
 				const models: IAgentModelInfo[] = [];
 				for (const provider of this._providers.values()) {
@@ -1199,6 +1230,15 @@ export class AgentService extends Disposable implements IAgentService {
 	}
 
 	async createSession(config?: IAgentCreateSessionConfig): Promise<URI> {
+		return this._createSession(config);
+	}
+
+	/**
+	 * Creates a session. `sourceOverride` forces the telemetry `source`
+	 * (the `create_session` server tool passes `'agentTool'`); otherwise the
+	 * source is derived from `config` (fork / import / user).
+	 */
+	private async _createSession(config?: IAgentCreateSessionConfig, sourceOverride?: AgentHostSessionSource): Promise<URI> {
 		const providerId = config?.provider ?? this._defaultProvider;
 		const provider = providerId ? this._providers.get(providerId) : undefined;
 		if (!provider) {
@@ -1432,6 +1472,13 @@ export class AgentService extends Disposable implements IAgentService {
 
 		this._changesetCoordinator.onSessionCreated(session.toString());
 
+		// Create seam: emit `agentHost.sessionCreated` UNCONDITIONALLY here —
+		// before the `!created.provisional` branch — so provisional sessions are
+		// counted with `isProvisional: true`. A re-issued create for an existing
+		// URI (reconnect mid-grace) keeps the original tracking entry and does
+		// not re-emit.
+		this._recordSessionCreated(session, provider, config, sourceOverride, !!created.provisional);
+
 		if (!created.provisional) {
 			// Persist the AH-owned workspace-less marker now that the session DB
 			// exists, from the value `_buildInitialSummary` inferred. Provisional
@@ -1445,6 +1492,11 @@ export class AgentService extends Disposable implements IAgentService {
 			// don't see `Ready` until the agent actually has an SDK
 			// session, working directory, etc.
 			this._stateManager.dispatchServerAction(session.toString(), { type: ActionType.SessionReady });
+
+			// Non-provisional sessions are materialized at create, so emit the
+			// materialize seam now. Provisional sessions emit it later from
+			// {@link _onDidMaterializeSession}.
+			this._scheduleSessionMaterializedTelemetry(session);
 		}
 
 		// Refresh the git state for the session's process root.
@@ -1452,6 +1504,81 @@ export class AgentService extends Disposable implements IAgentService {
 		void this._gitStateService.refreshSessionGitState(session.toString(), workingDirectory);
 
 		return session;
+	}
+
+	/** Derives the telemetry source for a create, honoring an explicit override. */
+	private _resolveSessionSource(config: IAgentCreateSessionConfig | undefined, override: AgentHostSessionSource | undefined): AgentHostSessionSource {
+		if (override) {
+			return override;
+		}
+		if (config?.fork) {
+			return 'fork';
+		}
+		if (config?.importConversation) {
+			return 'import';
+		}
+		return 'user';
+	}
+
+	/**
+	 * Create seam of the two-seam session telemetry: records tracking state and
+	 * emits `agentHost.sessionCreated`. No git probe — the git topology is
+	 * reported later by the materialize seam. Deduplicated per session URI so a
+	 * re-issued create (reconnect) does not emit twice.
+	 */
+	private _recordSessionCreated(session: URI, provider: IAgent, config: IAgentCreateSessionConfig | undefined, sourceOverride: AgentHostSessionSource | undefined, isProvisional: boolean): void {
+		const sessionKey = session.toString();
+		if (this._sessionTelemetryTracking.has(sessionKey)) {
+			return;
+		}
+		const source = this._resolveSessionSource(config, sourceOverride);
+		this._sessionTelemetryTracking.set(sessionKey, { provider: provider.id, source, wasProvisional: isProvisional, materializationScheduled: false, cancelled: false });
+		const folderCount = this._configurationService.getEffectiveWorkingDirectories(sessionKey)?.length ?? 0;
+		reportAgentHostSessionCreated(this._telemetryService, {
+			provider: provider.id,
+			source,
+			folderCount,
+			isMultiRoot: folderCount > 1,
+			isProvisional,
+		});
+	}
+
+	/**
+	 * Materialize seam of the two-seam session telemetry. Fire-and-forget:
+	 * re-reads the effective working directories, resolves the git/non-git
+	 * topology (bounded), and emits `agentHost.sessionMaterialized` at most once
+	 * per session. Sessions without a tracking entry (resumed / restored, not
+	 * created in this process) are skipped, as are disposed sessions.
+	 */
+	private _scheduleSessionMaterializedTelemetry(session: URI): void {
+		const sessionKey = session.toString();
+		const tracking = this._sessionTelemetryTracking.get(sessionKey);
+		if (!tracking || tracking.cancelled || tracking.materializationScheduled) {
+			return;
+		}
+		tracking.materializationScheduled = true;
+		void (async () => {
+			const workingDirectories = this._configurationService.getEffectiveWorkingDirectories(sessionKey) ?? [];
+			const stopWatch = StopWatch.create();
+			const { topology } = await resolveSessionTopology(workingDirectories, this._gitService, (directory, error) => {
+				this._logService.warn(`[AgentService] Failed to resolve repository topology for ${directory} while materializing ${sessionKey}`, error);
+			});
+			const classificationDurationMs = stopWatch.elapsed();
+			// Bail if the session was disposed — or its URI reused by a new
+			// session — while the topology resolved (identity, not just cancelled).
+			if (this._sessionTelemetryTracking.get(sessionKey) !== tracking || tracking.cancelled) {
+				return;
+			}
+			reportAgentHostSessionMaterialized(this._telemetryService, {
+				provider: tracking.provider,
+				source: tracking.source,
+				wasProvisional: tracking.wasProvisional,
+				topology,
+				classificationDurationMs,
+			});
+		})().catch(err => {
+			this._logService.warn(`[AgentService] Failed to emit sessionMaterialized telemetry for ${sessionKey}`, err);
+		});
 	}
 
 	async createChat(session: URI, chat: URI, options?: IAgentCreateChatOptions): Promise<void> {
@@ -1962,6 +2089,10 @@ export class AgentService extends Disposable implements IAgentService {
 		this._stateManager.markSessionPersisted(sessionKey, summary);
 		this._stateManager.dispatchServerAction(sessionKey, { type: ActionType.SessionReady });
 
+		// Materialize seam for provisional sessions (skipped for resume /
+		// restore, which have no tracking entry).
+		this._scheduleSessionMaterializedTelemetry(e.session);
+
 		// Attach git state for the resolved process root (index 0), if present.
 		void this._gitStateService.refreshSessionGitState(e.session.toString(), e.workingDirectories?.[0]);
 
@@ -2172,6 +2303,13 @@ export class AgentService extends Disposable implements IAgentService {
 
 	async disposeSession(session: URI): Promise<void> {
 		this._logService.trace(`[AgentService] disposeSession: ${session.toString()}`);
+		// Cancel any in-flight materialize-telemetry emit and drop the tracking
+		// entry — this is a durable delete, unlike an idle eviction.
+		const telemetryTracking = this._sessionTelemetryTracking.get(session.toString());
+		if (telemetryTracking) {
+			telemetryTracking.cancelled = true;
+			this._sessionTelemetryTracking.delete(session.toString());
+		}
 		this._stateManager.invalidateSessionChatResolutions(session.toString());
 		for (const chat of this._stateManager.getSessionState(session.toString())?.chats ?? []) {
 			this._sideEffects.clearToolCallTelemetry(chat.resource);

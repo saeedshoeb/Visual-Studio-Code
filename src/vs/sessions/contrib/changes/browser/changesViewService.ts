@@ -16,6 +16,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { ISessionsService } from '../../../services/sessions/browser/sessionsService.js';
 import { ISessionChangeset, ISessionChangesetOperation, ISessionFileChange, SessionChangesetOperationScope } from '../../../services/sessions/common/session.js';
 import { ISessionsManagementService } from '../../../services/sessions/common/sessionsManagement.js';
+import { classifySessionWorkspaceTopology, ISessionWorkspaceTopology } from '../../../common/sessionsTelemetry.js';
 import { AgentFeedbackState, IAgentFeedbackService } from '../../agentFeedback/browser/agentFeedbackService.js';
 import { ICodeReviewService, PRReviewStateKind } from '../../codeReview/browser/codeReviewService.js';
 import { ChangesViewMode, IsolationMode } from '../common/changes.js';
@@ -44,6 +45,7 @@ export class ChangesViewService extends Disposable implements IChangesViewServic
 	readonly activeSessionChangesetLoadingObs: IObservable<boolean>;
 	readonly activeSessionChangesetOperationsObs: IObservable<readonly ISessionChangesetOperation[]>;
 	readonly activeSessionHasGitRepositoryObs: IObservable<boolean>;
+	readonly activeSessionWorkspaceTopologyObs: IObservable<ISessionWorkspaceTopology>;
 	readonly activeSessionReviewCommentCountByFileObs: IObservable<Map<string, number>>;
 	readonly activeSessionAgentFeedbackCountByFileObs: IObservable<Map<string, number>>;
 	readonly activeSessionStateObs: IObservable<ActiveSessionState | undefined>;
@@ -110,6 +112,13 @@ export class ChangesViewService extends Disposable implements IChangesViewServic
 			const activeSession = this.sessionsService.activeSession.read(reader);
 			const workspace = activeSession?.workspace.read(reader);
 			return workspace?.folders[0].gitRepository !== undefined;
+		});
+
+		// Active session workspace topology (browser-projected folder metadata)
+		this.activeSessionWorkspaceTopologyObs = derivedOpts({ equalsFn: structuralEquals }, reader => {
+			const folders = this.sessionsService.activeSession.read(reader)?.workspace.read(reader)?.folders ?? [];
+			const gitFolderCount = folders.filter(folder => folder.gitRepository !== undefined).length;
+			return classifySessionWorkspaceTopology(folders.length, gitFolderCount);
 		});
 
 		// Active session review comment count by file

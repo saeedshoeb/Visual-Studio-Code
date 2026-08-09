@@ -5057,6 +5057,7 @@ export class CopilotAgentSession extends Disposable {
 					applyingInstructionsCount: number;
 					referencedInstructionsCount: number;
 					claudeMdCount: number;
+					workingDirectoryCount: number;
 				};
 				type AgentHostInstructionsCollectedClassification = {
 					provider: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; comment: 'The Agent Host provider that emitted this event (e.g. copilotcli). Absent on local rows; use presence to distinguish AH from local.' };
@@ -5067,6 +5068,7 @@ export class CopilotAgentSession extends Disposable {
 					applyingInstructionsCount: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of loaded instruction sources that carry an applyTo glob pattern. Semantic shift from the local field, which counts sources whose applyTo matched the current request context.' };
 					referencedInstructionsCount: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of loaded instruction sources discovered transitively (child-instructions via subdirectory walk, or nested AGENTS.md). Semantic shift from the local field, which counts sources added via explicit <file> references in other instruction files.' };
 					claudeMdCount: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of CLAUDE.md files among the loaded sources.' };
+					workingDirectoryCount: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of effective working directories for the session when the instructions were collected.' };
 					owner: 'amunger';
 					comment: 'Agent Host emission of agentHost.instructionsCollected. Carries the subset of the local shape that can be honestly (or close-analogously) computed from the SDK\'s InstructionSource list; other fields are intentionally omitted (see source comment).';
 				};
@@ -5079,6 +5081,7 @@ export class CopilotAgentSession extends Disposable {
 					applyingInstructionsCount,
 					referencedInstructionsCount,
 					claudeMdCount,
+					workingDirectoryCount: this._configurationService.getEffectiveWorkingDirectories(this.sessionUri.toString())?.length ?? 0,
 				});
 			})().catch(err => {
 				this._logService.trace(`[Copilot:${sessionId}] instructionsCollected telemetry failed: ${getErrorMessage(err)}`);

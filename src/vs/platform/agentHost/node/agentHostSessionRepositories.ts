@@ -3,9 +3,17 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { Limiter } from '../../../base/common/async.js';
 import { extUriBiasedIgnorePathCase } from '../../../base/common/resources.js';
 import { URI } from '../../../base/common/uri.js';
 import { IAgentHostGitService } from '../common/agentHostGitService.js';
+
+/**
+ * Upper bound on concurrent `git rev-parse --show-toplevel` probes when
+ * resolving a session's working directories, so a many-folder session cannot
+ * spawn an unbounded number of git processes at once.
+ */
+const REPOSITORY_ROOT_RESOLUTION_CONCURRENCY = 8;
 
 /**
  * The git repository roots and non-git directories that a session's effective
@@ -50,17 +58,23 @@ export interface ISessionRepositories {
  * `nonGitDirectories`.
  */
 export async function resolveSessionRepositories(workingDirectories: readonly URI[], gitService: IAgentHostGitService, onRootError?: (directory: URI, error: unknown) => void): Promise<ISessionRepositories> {
-	const resolvedRoots = await Promise.all(workingDirectories.map(async workingDirectory => {
-		try {
-			return { workingDirectory, repositoryRoot: await gitService.getRepositoryRoot(workingDirectory) };
-		} catch (err) {
-			if (!onRootError) {
-				throw err;
+	const limiter = new Limiter<{ workingDirectory: URI; repositoryRoot: URI | undefined }>(REPOSITORY_ROOT_RESOLUTION_CONCURRENCY);
+	let resolvedRoots: { workingDirectory: URI; repositoryRoot: URI | undefined }[];
+	try {
+		resolvedRoots = await Promise.all(workingDirectories.map(workingDirectory => limiter.queue(async () => {
+			try {
+				return { workingDirectory, repositoryRoot: await gitService.getRepositoryRoot(workingDirectory) };
+			} catch (err) {
+				if (!onRootError) {
+					throw err;
+				}
+				onRootError(workingDirectory, err);
+				return { workingDirectory, repositoryRoot: undefined };
 			}
-			onRootError(workingDirectory, err);
-			return { workingDirectory, repositoryRoot: undefined };
-		}
-	}));
+		})));
+	} finally {
+		limiter.dispose();
+	}
 
 	const gitRepositories: URI[] = [];
 	const nonGitDirectories: URI[] = [];

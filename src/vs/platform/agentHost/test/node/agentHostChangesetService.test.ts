@@ -22,6 +22,7 @@ import { IAgentHostChangesetOperationService } from '../../common/agentHostChang
 import { NULL_CHECKPOINT_SERVICE, type IAgentHostCheckpointService } from '../../common/agentHostCheckpointService.js';
 import { NULL_REVIEW_SERVICE } from '../../common/agentHostReviewService.js';
 import { IAgentHostGitService } from '../../common/agentHostGitService.js';
+import { NullTelemetryService } from '../../../telemetry/common/telemetryUtils.js';
 import { AgentHostStateManager } from '../../node/agentHostStateManager.js';
 import { AgentConfigurationService } from '../../node/agentConfigurationService.js';
 import { SessionDatabase } from '../../node/sessionDatabase.js';
@@ -95,6 +96,7 @@ suite.skip('AgentHostChangesetService', () => {
 			createOperationService(),
 			createSubscriptionService(buildUncommittedChangesetUri(sessionUri.toString())),
 			NULL_REVIEW_SERVICE,
+			NullTelemetryService,
 		));
 	});
 
@@ -279,7 +281,7 @@ suite.skip('AgentHostChangesetService', () => {
 			} as unknown as IAgentHostGitService;
 
 			const localChangesets = disposables.add(new AgentHostChangesetService(
-				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(buildUncommittedChangesetUri(sessionUri.toString())), NULL_REVIEW_SERVICE));
+				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(buildUncommittedChangesetUri(sessionUri.toString())), NULL_REVIEW_SERVICE, NullTelemetryService));
 
 			localStateManager.createSession({
 				resource: sessionUri.toString(),
@@ -357,7 +359,7 @@ suite.skip('AgentHostChangesetService', () => {
 				},
 			} as unknown as IAgentHostGitService;
 			const localChangesets = disposables.add(new AgentHostChangesetService(
-				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(buildUncommittedChangesetUri(sessionUri.toString())), NULL_REVIEW_SERVICE));
+				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(buildUncommittedChangesetUri(sessionUri.toString())), NULL_REVIEW_SERVICE, NullTelemetryService));
 			const sessionStr = sessionUri.toString();
 
 			localStateManager.createSession({
@@ -393,7 +395,7 @@ suite.skip('AgentHostChangesetService', () => {
 				},
 			} as unknown as IAgentHostGitService;
 			const localChangesets = disposables.add(new AgentHostChangesetService(
-				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(), NULL_REVIEW_SERVICE));
+				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(), NULL_REVIEW_SERVICE, NullTelemetryService));
 			const sessionStr = sessionUri.toString();
 
 			localStateManager.createSession({
@@ -426,7 +428,7 @@ suite.skip('AgentHostChangesetService', () => {
 			} as unknown as IAgentHostGitService;
 
 			const localChangesets = disposables.add(new AgentHostChangesetService(
-				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(), NULL_REVIEW_SERVICE));
+				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(), NULL_REVIEW_SERVICE, NullTelemetryService));
 
 			localStateManager.createSession({
 				resource: sessionUri.toString(),
@@ -486,7 +488,7 @@ suite.skip('AgentHostChangesetService', () => {
 			} as unknown as IAgentHostGitService;
 
 			const localChangesets = disposables.add(new AgentHostChangesetService(
-				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(), NULL_REVIEW_SERVICE));
+				localStateManager, new NullLogService(), sessionDataService, stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(), NULL_REVIEW_SERVICE, NullTelemetryService));
 
 			const sessionStr = sessionUri.toString();
 			localStateManager.createSession({
@@ -560,7 +562,7 @@ suite.skip('AgentHostChangesetService', () => {
 			} as unknown as IAgentHostGitService;
 			const localStateManager = disposables.add(new AgentHostStateManager(new NullLogService()));
 			const localChangesets = disposables.add(new AgentHostChangesetService(
-				localStateManager, new NullLogService(), createNullSessionDataService(), stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(buildUncommittedChangesetUri(sessionUri.toString())), NULL_REVIEW_SERVICE));
+				localStateManager, new NullLogService(), createNullSessionDataService(), stubGit, NULL_CHECKPOINT_SERVICE, disposables.add(new AgentConfigurationService(localStateManager, new NullLogService())), createOperationService(), createSubscriptionService(buildUncommittedChangesetUri(sessionUri.toString())), NULL_REVIEW_SERVICE, NullTelemetryService));
 
 			const sessionStr = sessionUri.toString();
 			localStateManager.createSession({
@@ -610,6 +612,7 @@ suite.skip('AgentHostChangesetService', () => {
 				createOperationService(),
 				subscriptionService,
 				NULL_REVIEW_SERVICE,
+				NullTelemetryService,
 			));
 			return { service, localStateManager, computes, subscriptions: subscriptionService.subscriptions };
 		}
@@ -932,6 +935,7 @@ suite.skip('AgentHostChangesetService', () => {
 				createOperationService(),
 				subscriptionService,
 				NULL_REVIEW_SERVICE,
+				NullTelemetryService,
 			));
 		}
 		test('onTurnComplete schedules a per-turn recompute when someone is subscribed', async () => {
@@ -1040,6 +1044,7 @@ suite.skip('AgentHostChangesetService', () => {
 				createOperationService(),
 				createSubscriptionService(buildTurnChangesetUri(sessionUri.toString(), 'turn-1')),
 				NULL_REVIEW_SERVICE,
+				NullTelemetryService,
 			));
 
 			localStateManager.createSession({
@@ -1118,6 +1123,7 @@ suite.skip('AgentHostChangesetService', () => {
 				createOperationService(),
 				createSubscriptionService(),
 				NULL_REVIEW_SERVICE,
+				NullTelemetryService,
 			));
 
 			const compareUri = await svc.computeCompareTurnsChangeset(sessionStr, 'orig', 'mod');
@@ -1152,6 +1158,7 @@ suite.skip('AgentHostChangesetService', () => {
 				createOperationService(),
 				createSubscriptionService(),
 				NULL_REVIEW_SERVICE,
+				NullTelemetryService,
 			));
 
 			const compareUri = await svc.computeCompareTurnsChangeset(sessionStr, 'orig', 'mod');
@@ -1183,6 +1190,7 @@ suite.skip('AgentHostChangesetService', () => {
 				createOperationService(),
 				createSubscriptionService(),
 				NULL_REVIEW_SERVICE,
+				NullTelemetryService,
 			));
 
 			const compareUri = await svc.computeCompareTurnsChangeset(sessionStr, 'orig', 'mod');
@@ -1212,6 +1220,7 @@ suite.skip('AgentHostChangesetService', () => {
 				createOperationService(),
 				createSubscriptionService(),
 				NULL_REVIEW_SERVICE,
+				NullTelemetryService,
 			));
 
 			const compareUri = await svc.computeCompareTurnsChangeset(sessionStr, 'orig', 'mod');
@@ -1296,6 +1305,7 @@ suite('AgentHostChangesetService - multi-root turn changeset', () => {
 			createOperationService(),
 			createSubscriptionService(),
 			NULL_REVIEW_SERVICE,
+			NullTelemetryService,
 		));
 		stateManager.createSession({
 			resource: sessionStr,

@@ -149,6 +149,8 @@ export interface IAgentHostTurnCompletedEvent {
 	permissionLevel: string | undefined;
 	errorType: string | undefined;
 	failureStage: AgentHostTurnFailureStage | undefined;
+	isMultiRoot: boolean;
+	workingDirectoryCount: number;
 }
 
 export type IAgentHostTurnCompletedClassification = {
@@ -164,6 +166,8 @@ export type IAgentHostTurnCompletedClassification = {
 	permissionLevel: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; comment: 'The tool auto-approval level configured for the session at turn start (e.g. default, autoApprove, autopilot).' };
 	errorType: { classification: 'SystemMetaData'; purpose: 'PerformanceAndHealth'; comment: 'The structured agent host or provider error type when the turn fails.' };
 	failureStage: { classification: 'SystemMetaData'; purpose: 'PerformanceAndHealth'; comment: 'The bounded stage at which the agent host turn failed.' };
+	isMultiRoot: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Whether the session spans more than one working directory.' };
+	workingDirectoryCount: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'The number of effective working directories for the session at turn completion.' };
 	owner: 'roblourens';
 	comment: 'Tracks agent host turn performance including time to first visible progress and total turn duration.';
 };
@@ -220,6 +224,8 @@ export interface IAgentHostTurnCompletedReport {
 	modelSelectionKind: AgentHostModelSelectionKind;
 	permissionLevel: string | undefined;
 	failure: IAgentHostTurnFailure | undefined;
+	isMultiRoot: boolean;
+	workingDirectoryCount: number;
 }
 
 export interface IAgentHostToolInvokedReport {
@@ -892,6 +898,8 @@ export class AgentHostTelemetryReporter {
 			permissionLevel: report.permissionLevel,
 			errorType: report.failure?.error.errorType,
 			failureStage: report.failure?.stage,
+			isMultiRoot: report.isMultiRoot,
+			workingDirectoryCount: report.workingDirectoryCount,
 		});
 		if (report.failure) {
 			const { providerCallId, serviceRequestId } = readAgentErrorTelemetryMeta(report.failure.error);

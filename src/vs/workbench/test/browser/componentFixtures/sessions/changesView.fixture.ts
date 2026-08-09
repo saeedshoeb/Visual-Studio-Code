@@ -80,6 +80,7 @@ class FixtureChangesViewService extends Disposable implements IChangesViewServic
 	readonly activeSessionChangesetLoadingObs: IObservable<boolean>;
 	readonly activeSessionChangesetOperationsObs: IObservable<readonly ISessionChangesetOperation[]>;
 	readonly activeSessionHasGitRepositoryObs: IObservable<boolean>;
+	readonly activeSessionWorkspaceTopologyObs: IChangesViewService['activeSessionWorkspaceTopologyObs'];
 	readonly activeSessionReviewCommentCountByFileObs: IObservable<Map<string, number>>;
 	readonly activeSessionAgentFeedbackCountByFileObs: IObservable<Map<string, number>>;
 	readonly activeSessionStateObs: IObservable<ActiveSessionState | undefined>;
@@ -102,6 +103,7 @@ class FixtureChangesViewService extends Disposable implements IChangesViewServic
 		this.activeSessionChangesetLoadingObs = constObservable(false);
 		this.activeSessionChangesetOperationsObs = constObservable<readonly ISessionChangesetOperation[]>([]);
 		this.activeSessionHasGitRepositoryObs = constObservable(true);
+		this.activeSessionWorkspaceTopologyObs = constObservable({ workspaceFolderCount: 1, gitFolderCount: 1, nonGitFolderCount: 0, isMultiRoot: false });
 		this.activeSessionReviewCommentCountByFileObs = constObservable(new Map(options.reviewCommentCounts));
 		this.activeSessionAgentFeedbackCountByFileObs = constObservable(new Map(options.agentFeedbackCounts));
 		this.activeSessionSectionCollapseStateObs = constObservable(options.sectionCollapseState ?? { otherFiles: false, checks: false });

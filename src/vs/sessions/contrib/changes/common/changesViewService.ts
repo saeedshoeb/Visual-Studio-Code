@@ -7,6 +7,7 @@ import { IObservable } from '../../../../base/common/observable.js';
 import { URI } from '../../../../base/common/uri.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { ISessionChangeset, ISessionChangesetOperation, ISessionFileChange } from '../../../services/sessions/common/session.js';
+import { ISessionWorkspaceTopology } from '../../../common/sessionsTelemetry.js';
 import { ChangesViewMode, IsolationMode } from './changes.js';
 
 export interface ActiveSessionState {
@@ -48,6 +49,7 @@ export interface IChangesViewService {
 	readonly activeSessionChangesetLoadingObs: IObservable<boolean>;
 	readonly activeSessionChangesetOperationsObs: IObservable<readonly ISessionChangesetOperation[]>;
 	readonly activeSessionHasGitRepositoryObs: IObservable<boolean>;
+	readonly activeSessionWorkspaceTopologyObs: IObservable<ISessionWorkspaceTopology>;
 	readonly activeSessionReviewCommentCountByFileObs: IObservable<Map<string, number>>;
 	readonly activeSessionAgentFeedbackCountByFileObs: IObservable<Map<string, number>>;
 	readonly activeSessionStateObs: IObservable<ActiveSessionState | undefined>;

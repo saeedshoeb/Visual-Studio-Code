@@ -110,4 +110,40 @@ suite('agentHostSessionRepositories', () => {
 			/git spawn failed/,
 		);
 	});
+
+	test('bounds concurrent repository-root probes and preserves input order', async () => {
+		const directories = Array.from({ length: 20 }, (_, i) => URI.file(`/repos/dir-${i}`));
+		let active = 0;
+		let maxActive = 0;
+		const pending: Array<() => void> = [];
+		const gitService: IAgentHostGitService = {
+			...createNoopGitService(),
+			getRepositoryRoot: (workingDirectory: URI) => {
+				active++;
+				maxActive = Math.max(maxActive, active);
+				return new Promise<URI>(resolve => {
+					pending.push(() => {
+						active--;
+						resolve(workingDirectory);
+					});
+				});
+			},
+		};
+
+		const resultPromise = resolveSessionRepositories(directories, gitService);
+		let settled = false;
+		void resultPromise.then(() => { settled = true; });
+		// Drain probes one at a time, yielding so the limiter can start the next
+		// queued probe, until the whole resolution settles.
+		while (!settled) {
+			pending.shift()?.();
+			await Promise.resolve();
+		}
+		const result = await resultPromise;
+
+		assert.deepStrictEqual({ maxActive, gitRepositories: result.gitRepositories }, {
+			maxActive: 8,
+			gitRepositories: directories,
+		});
+	});
 });
