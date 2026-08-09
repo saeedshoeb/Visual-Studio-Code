@@ -18,6 +18,7 @@ import { IContextMenuService } from '../../../../platform/contextview/browser/co
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { IMenuService, MenuId } from '../../../../platform/actions/common/actions.js';
 import { EditorCommandsContextActionRunner, EditorTabsControl } from './editorTabsControl.js';
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
@@ -152,6 +153,7 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 		@INotificationService notificationService: INotificationService,
 		@IQuickInputService quickInputService: IQuickInputService,
 		@IThemeService themeService: IThemeService,
+		@ICommandService private readonly commandService: ICommandService,
 		@IEditorService private readonly editorService: EditorServiceImpl,
 		@IPathService private readonly pathService: IPathService,
 		@ITreeViewsDnDService private readonly treeViewsDragAndDropService: ITreeViewsDnDService,
@@ -364,6 +366,15 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 				}, this.groupView.id);
 			}));
 		}
+
+		// New terminal when middle-clicking on tabs container (but not tabs)
+		this._register(addDisposableListener(tabsContainer, EventType.AUXCLICK, e => {
+			if (e.button === 1 /* Middle Button */ && e.target === tabsContainer) {
+				EventHelper.stop(e, true);
+
+				this.commandService.executeCommand('workbench.action.createTerminalEditor');
+			}
+		}));
 
 		// Prevent auto-scrolling (https://github.com/microsoft/vscode/issues/16690)
 		this._register(addDisposableListener(tabsContainer, EventType.MOUSE_DOWN, e => {
